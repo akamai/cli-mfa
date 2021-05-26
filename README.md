@@ -1,22 +1,45 @@
 # Akamai CLI: MFA
 
-Welcome to the MFA module for Akamai CLI.
+Welcome to the Akamai MFA module for Akamai CLI.
+For more information about Akamai MFA, see https://www.akamai.com/mfa
 
 ## Table of contents<!-- omit in toc -->
 
 - [Akamai CLI: MFA](#akamai-cli-mfa)
+  - [Pre-requisites](#pre-requisites)
+    - [Akamai CLI](#akamai-cli)
+    - [Python](#python)
   - [Getting started](#getting-started)
   - [Field documentation](#field-documentation)
   - [Command examples](#command-examples)
   - [Streaming Akamai MFA events to a SIEM](#streaming-akamai-mfa-events-to-a-siem)
   - [Support](#support)
 
+
+## Pre-requisites
+
+### Akamai CLI
+
+Make sure your first have Akamai CLI installed on your machine.
+
+We support a wide variety of platform: Windows, Mac, Linux, container...
+Download the CLI from [https://developer.akamai.com/cli](https://developer.akamai.com/cli#download-and-install)
+
+For more information, please visit the [Getting Started](https://developer.akamai.com/cli/docs/getting-started) guide on developer.akamai.com.
+
+### Python
+
+Beyond Akamai CLI pre-requesites, `cli-mfa` requires Python 3.6 or greater on your system, as well as `pip`.
+
+You can verify by opening a shell and type `python --version` and `pip --version`
+If you don't have Python on your system, go to [https://www.python.org](https://www.python.org).
+
 ## Getting started
 
 You'll need to configure an logging integration in [Akamai Control Center](https://control.akamai.com).
 
 - Use left navigation (mega menu) and select Enterprise Center
-- Open **MFA** > *Integrations***
+- Open **MFA** > **Integrations**
 - Click on (+) to add a new integration
 - Select **Logging**
 - Set a name, e.g. *cli-mfa*
