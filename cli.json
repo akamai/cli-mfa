@@ -1,0 +1,13 @@
+{
+    "requirements": {
+      "python": "3.6.0"
+    },
+    "commands": [
+      {
+        "name": "mfa",
+        "version": "0.0.1",
+        "description": "Akamai CLI for MFA"
+      }
+    ]
+  }
+  
