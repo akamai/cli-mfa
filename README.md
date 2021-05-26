@@ -63,7 +63,19 @@ Output is using JSON formatting, you'll find all the details about each attribut
 
 ## Command examples
 
+Inline general help
+```
+% akamai mfa --help
+```
+
+Inline help for auth event
+```
+% akamai mfa event auth --help
+```
+
 Try to pull MFA events with the following examples.
+When ``--start`` is omitted, start is set to 5 minutes ago.
+When ``--end`` is omitted, end takes now minutes 30 seconds.
 
 For Authentication events:
 
