@@ -19,17 +19,168 @@ cli-mfa
 Command Line Input tool for Akamai MFA
 :url: https://github.com/akamai/cli-mfa
 :author: Antoine Drochon <androcho@akamai.com>
+
+Field description can be found at:
+https://learn.akamai.com/en-us/webhelp/enterprise-mfa/akamai-mfa-logs-from-splunk-application/GUID-0F17296F-90F3-483E-AFDE-F98FBC51A8AC.html
+
 """
 
 import logging
-import platform
+import requests
+import hashlib
+import hmac
+import time
+import datetime
+from http.client import HTTPConnection
+import argparse
+import configparser
+import sys
+import os
+import json
 
+
+__VERSION__ = "0.0.2"
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 log_file = None
 
+
+class MFAConfig():
+
+    CONFIG_KEYS = [
+        'mfa_integration_id',
+        'mfa_signing_key'
+    ]
+
+    def __init__(self):
+
+        self.mfa_integration_id = None
+        self.mfa_signing_key = None
+
+        # 1. Scan parameters from the CLI arguments
+
+        parser = argparse.ArgumentParser(prog="akamai mfa",
+                                        description='Process command line options.')
+
+        subparsers = parser.add_subparsers(dest='command', help='Main command')
+        cmdparser = subparsers.add_parser('version', help="Display CLI-MFA version")
+        eventparser = subparsers.add_parser('event', help="Dump MFA events")
+        eventparser.add_argument("event_type", choices=['policy', 'auth'], default='policy', help="Event type")
+        parser.add_argument("--edgerc", type=argparse.FileType('r'), default=os.path.expanduser("~/.edgerc"),
+                            help='Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
+    
+        parser.add_argument("--section", default="default", help="Section inside .edgerc, default is [default]")
+        parser.add_argument("--debug", '-d', action="store_true", default=False, help="Debug mode")
+
+        try:
+            scanned_cli_args = parser.parse_args()
+            cli_args = vars(scanned_cli_args)
+            for option in cli_args:
+                setattr(self, option, cli_args[option])
+        except Exception as e:
+            logging.exception(e)
+            sys.exit(1)
+
+        # 2. Load MFA params from .edgerc
+        edgerc_config = configparser.ConfigParser()
+        edgerc_config.read_file(self.edgerc)
+        if not edgerc_config.has_section(self.section):
+            err_msg = "ERROR: No section named %s was found in your .edgerc file\n" % self.section
+            err_msg += "ERROR: Please generate credentials for the script functionality\n"
+            err_msg += "ERROR: and run 'python gen_edgerc.py %s' to generate the credential file\n" % self.edgerc.name
+            sys.exit(err_msg)
+        for key, value in edgerc_config.items(self.section):
+            if key in MFAConfig.CONFIG_KEYS:
+                setattr(self, key, value)
+
+        # And the environment variable
+        if os.getenv('MFA_INTEGRATION_ID'):
+            self.integration_id = os.getenv('MFA_INTEGRATION_ID')
+        if os.getenv('MFA_SIGNING_KEY'):
+            self.signing_key = os.getenv('MFA_SIGNING_KEY')
+
+        self.validate()
+
+    def validate(self):
+        if not hasattr(self, 'mfa_integration_id'):
+            raise RuntimeError("Missing mfa_integration_id")
+        if not hasattr(self, 'mfa_signing_key'):
+            raise RuntimeError("Missing mfa_signing_key")
+
+
+class AkamaiMFAAuth(requests.auth.AuthBase):
+    """
+    Akamai MFA API authentication for Requests.
+    """
+
+    def __init__(self, config):
+        self._config = config
+        self._content_type_json = {'Content-Type': 'application/json'}
+
+    def get_signature(self, t):
+        signature = hmac.new(
+            key=self._config.mfa_signing_key.encode("utf-8"),
+            msg=str(t).encode("utf-8"),
+            digestmod=hashlib.sha256).hexdigest()
+        return signature
+
+    def __call__(self, r):
+        now = str(int(time.time()))
+        signature = self.get_signature(now)
+        self._headers = {
+            'X-Pushzero-Id': self._config.mfa_integration_id,
+            'X-Pushzero-Signature': signature,
+            'X-Pushzero-Signature-Time': now}
+        r.headers.update(self._headers)
+        r.headers.update(self._content_type_json)
+        return r
+
+
 if __name__ == "__main__":
 
-    logging.basicConfig(filename=log_file, level=logging.INFO, format=LOG_FMT)
-    logging.debug("Python %s" % platform.python_version())
+    config = MFAConfig()
 
-    print("Work in progress, please try update later...")
+    logging.basicConfig(filename=log_file, level=logging.INFO, format=LOG_FMT)
+
+    if config.debug:
+        HTTPConnection.debuglevel = 1
+        logging.getLogger().setLevel(logging.DEBUG)
+        requests_log = logging.getLogger("urllib3")
+        requests_log.setLevel(logging.DEBUG)
+        requests_log.propagate = True
+
+    if config.command == "version":
+        print(__VERSION__)
+        sys.exit(0)
+
+
+    mfa_api_url = "https://mfa.akamai.com"
+    mfa_api_ver = "v1"
+
+    session = requests.Session()
+    session.headers.update({'User-Agent': f'cli-mfa/{__VERSION__}'})
+    session.auth = AkamaiMFAAuth(config)
+
+    page_size = 10
+    scan_end = datetime.datetime.utcnow()
+    scan_start = scan_end - datetime.timedelta(days=2)
+
+    if config.event_type == 'auth':
+        api_report_type = 'auths'
+    elif config.event_type == 'policy':
+        api_report_type = 'policies'
+
+    api_url = f'{mfa_api_url}/api/{mfa_api_ver}/control/reports/{api_report_type}'
+    page = 1
+    page_count = None
+    while page_count is None or page <= page_count:
+        params = {
+            'after': scan_start.isoformat(),
+            'before': scan_end.isoformat(),
+            'page_size': page_size,
+            'page': page
+        }
+        r = session.get(api_url, params=params)
+        page += 1
+        page_count = r.json().get('result', {}).get('total_page_count')
+        for mfa_event in r.json().get('result', {}).get('page'):
+            print(json.dumps(mfa_event))
