@@ -39,7 +39,7 @@ import os
 import json
 
 
-__VERSION__ = "0.0.4"
+__VERSION__ = "0.0.5"
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 MOST_RECENT_PADDING = 30
 
@@ -86,12 +86,12 @@ class MFAConfig():
         eventparser.add_argument("--noreceipt", default=False, action="store_true", 
                                  help="Discard the receipt attribute to save log space")
 
-        self.parser.add_argument("--edgerc", type=argparse.FileType('r'), default="~/.edgerc",
-                                 help='Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
+        self.parser.add_argument("--edgerc", type=str, default="~/.edgerc",
+                                 help='Location of the credentials file (default is "~/.edgerc")')
     
         self.parser.add_argument("--section", default="default", help="Section inside .edgerc, default is [default]")
         self.parser.add_argument("--debug", '-d', action="store_true", default=False, help="Debug mode")
-        self.parser.add_argument('--user-agent-prefix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
+        self.parser.add_argument('--user-agent-preix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
 
         try:
             scanned_cli_args = self.parser.parse_args()
@@ -104,7 +104,7 @@ class MFAConfig():
 
         # 2. Load MFA params from .edgerc
         edgerc_config = configparser.ConfigParser()
-        edgerc_config.read_file(os.path.expanduser(self.edgerc))
+        edgerc_config.read(os.path.expanduser(self.edgerc))
         if not edgerc_config.has_section(self.section):
             err_msg = "ERROR: No section named %s was found in your .edgerc file\n" % self.section
             err_msg += "ERROR: Please generate credentials for the script functionality\n"
