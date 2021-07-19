@@ -91,7 +91,7 @@ class MFAConfig():
     
         self.parser.add_argument("--section", default="default", help="Section inside .edgerc, default is [default]")
         self.parser.add_argument("--debug", '-d', action="store_true", default=False, help="Debug mode")
-        self.parser.add_argument('--user-agent-preix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
+        self.parser.add_argument('--user-agent-prefix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
 
         try:
             scanned_cli_args = self.parser.parse_args()
@@ -108,7 +108,7 @@ class MFAConfig():
         if not edgerc_config.has_section(self.section):
             err_msg = "ERROR: No section named %s was found in your .edgerc file\n" % self.section
             err_msg += "ERROR: Please generate credentials for the script functionality\n"
-            err_msg += "ERROR: and run 'python gen_edgerc.py %s' to generate the credential file\n" % self.edgerc.name
+            err_msg += "ERROR: and run 'python gen_edgerc.py %s' to generate the credential file\n" % self.edgerc
             sys.exit(err_msg)
         for key, value in edgerc_config.items(self.section):
             if key in MFAConfig.CONFIG_KEYS:
