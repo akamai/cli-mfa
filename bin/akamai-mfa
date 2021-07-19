@@ -39,7 +39,7 @@ import os
 import json
 
 
-__VERSION__ = "0.0.5"
+__VERSION__ = "0.0.6"
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 MOST_RECENT_PADDING = 30
 
