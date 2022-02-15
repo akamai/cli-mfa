@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2021 Akamai Technologies, Inc. All Rights Reserved
+# Copyright 2022 Akamai Technologies, Inc. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,16 +38,17 @@ import sys
 import os
 import json
 
-
-__VERSION__ = "0.0.4"
+#: cli-mfa version, see also cli.json
+__VERSION__ = "0.0.5"
+#: Log formatting aligned with other CLIs
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
+#: Near real-time, 30s ago is the most recent by default
 MOST_RECENT_PADDING = 30
 
 log_file = None
 mfa_api_url = "https://mfa.akamai.com"
 mfa_api_ver = "v1"
-tail_pull_interval = 60  # Default is 60
-page_size = 10  # default is 1000
+tail_pull_interval = 60  # Default is 60 seconds
 epilog = '''Copyright (C) Akamai Technologies, Inc\n''' \
          '''Visit http://github.com/akamai/cli-mfa for detailed documentation'''
 
@@ -74,21 +75,20 @@ class MFAConfig():
                                               formatter_class=argparse.RawTextHelpFormatter)
 
         subparsers = self.parser.add_subparsers(dest='command', help='Main command')
-        cmdparser = subparsers.add_parser('version', help="Display CLI-MFA version")
+        subparsers.add_parser('version', help="Display CLI-MFA version")
         eventparser = subparsers.add_parser('event', help="Dump MFA events")
-        eventparser.add_argument("event_type", choices=['policy', 'auth'], nargs='?', const='event_type', 
-                                 default='auth', help="MFA event type, default is 'auth'")
         eventparser.add_argument("--start", "-s", default=None, type=int, help="Scan for events after this epoch")
         eventparser.add_argument("--end", "-e", default=None, type=int, help="Scan for events before this epoch")
-        eventparser.add_argument("--tail", "-f", default=False, action="store_true", 
-                                 help="""Do not stop when most recent log is reached, rather 
+        eventparser.add_argument("--tail", "-f", default=False, action="store_true",
+                                 help="""Do not stop when most recent log is reached, rather
                                          wait for additional data to be appended to the input.""")
-        eventparser.add_argument("--noreceipt", default=False, action="store_true", 
+        eventparser.add_argument("--noreceipt", default=False, action="store_true",
                                  help="Discard the receipt attribute to save log space")
 
         self.parser.add_argument("--edgerc", type=argparse.FileType('r'), default=os.path.expanduser("~/.edgerc"),
-                                 help='Location of the credentials file (default is %s)' % os.path.expanduser("~/.edgerc"))
-    
+                                 help='Location of the credentials file (default is %s)' %
+                                 os.path.expanduser("~/.edgerc"))
+
         self.parser.add_argument("--section", default="default", help="Section inside .edgerc, default is [default]")
         self.parser.add_argument("--debug", '-d', action="store_true", default=False, help="Debug mode")
         self.parser.add_argument('--user-agent-prefix', dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
@@ -154,7 +154,8 @@ class AkamaiMFAAuth(requests.auth.AuthBase):
         self._headers = {
             'X-Pushzero-Id': self._config.mfa_integration_id,
             'X-Pushzero-Signature': signature,
-            'X-Pushzero-Signature-Time': now}
+            'X-Pushzero-Signature-Time': now,
+            'X-Api-Version': '2021-07-15'}
         r.headers.update(self._headers)
         r.headers.update(self._content_type_json)
         return r
@@ -184,12 +185,7 @@ if __name__ == "__main__":
         session.headers.update({'User-Agent': f'{config.ua_prefix} cli-mfa/{__VERSION__}'})
         session.auth = AkamaiMFAAuth(config)
 
-        if config.event_type == 'auth':
-            api_report_type = 'auths'
-        elif config.event_type == 'policy':
-            api_report_type = 'policies'
-
-        api_url = f'{mfa_api_url}/api/{mfa_api_ver}/control/reports/{api_report_type}'
+        api_url = f'{mfa_api_url}/api/{mfa_api_ver}/control/reports/auths'
         scan_end = datetime.datetime.utcnow() - datetime.timedelta(seconds=MOST_RECENT_PADDING)
         scan_start = scan_end - datetime.timedelta(minutes=5)
         if config.end:
@@ -197,36 +193,40 @@ if __name__ == "__main__":
         if config.start:
             scan_start = datetime.datetime.utcfromtimestamp(config.start)
 
-
-        while True:
+        while True:  # main loop, used with the --tail/-f mode
             loop_start = time.time()
-            page = 1
-            page_count = None
-            while page_count is None or page <= page_count:
-                params = {
-                    'after': scan_start.isoformat(),
-                    'before': scan_end.isoformat(),
-                    'page_size': page_size,
-                    'page': page
-                }
-                r = session.get(api_url, params=params)
-                page += 1
-                page_count = r.json().get('result', {}).get('total_page_count')
-                for mfa_event in r.json().get('result', {}).get('page'):
+            continuation_token = None
+            params = {
+                'after': scan_start.isoformat(),
+                'before': scan_end.isoformat()
+            }
+
+            while True:  # Iterate until continuation_token attribute is missing
+                payload = {}
+                if continuation_token:
+                    payload = {'continuation_token': continuation_token}
+                r = session.post(api_url, params=params, json=payload)
+
+                api_response = r.json()
+                continuation_token = api_response.get('continuation_token')
+                scanned_events = api_response.get('result', {}).get('data', [])
+
+                for mfa_event in scanned_events:
                     if config.noreceipt:
                         mfa_event.pop('receipt')
                     print(json.dumps(mfa_event))
                     sys.stdout.flush()
 
+                if not continuation_token:
+                    break
+
             if config.tail:
                 wait = tail_pull_interval - (time.time() - loop_start)
                 logging.debug("Wait %s sec..." % wait)
                 time.sleep(wait)
-                scan_start = scan_end # next iteration we stich, start is the previous end
+                scan_start = scan_end  # next iteration we stich, start is the previous end
                 scan_end = datetime.datetime.utcnow() - datetime.timedelta(seconds=MOST_RECENT_PADDING)
-                
             else:
                 break
     else:
         raise ValueError(f"Unsupported command: {config.command}")
-

@@ -23,13 +23,13 @@ For more information about Akamai MFA, see https://www.akamai.com/mfa
 Make sure your first have Akamai CLI installed on your machine.
 
 We support a wide variety of platform: Windows, Mac, Linux, container...
-Download the CLI from [https://developer.akamai.com/cli](https://developer.akamai.com/cli#download-and-install)
+Download the CLI from [https://techdocs.akamai.com/developer/docs/about-clis](https://techdocs.akamai.com/developer/docs/about-clis)
 
-For more information, please visit the [Getting Started](https://developer.akamai.com/cli/docs/getting-started) guide on developer.akamai.com.
+For more information, please visit the [Getting Started video](https://www.youtube.com/watch?v=BbojoaTTT3A).
 
 ### Python
 
-Beyond Akamai CLI pre-requesites, `cli-mfa` requires Python 3.6 or greater on your system, as well as `pip`.
+Beyond Akamai CLI pre-requisites, `cli-mfa` requires Python 3.6 or greater on your system, as well as `pip`.
 
 You can verify by opening a shell and type `python --version` and `pip --version`
 If you don't have Python on your system, go to [https://www.python.org](https://www.python.org).
@@ -55,11 +55,12 @@ mfa_integration_id = app_12345abcdef
 mfa_signing_key = some-random-key
 ```
 
-If you are working with multiple tenants, create a different integration credentials in each tenant and place them into different section of the `edgerc` file.
+If you are working with multiple tenants, create a different integration credentials in each tenant and place them into different section of the `.edgerc` file.
 
 ## Field documentation
 
-Output is using JSON formatting, you'll find all the details about each attribute on our dedicated section on [learn.akamai.com](https://learn.akamai.com/en-us/webhelp/enterprise-mfa/akamai-mfa-logs-from-splunk-application/GUID-0F17296F-90F3-483E-AFDE-F98FBC51A8AC.html)
+Output is using JSON formatting, you'll find all the details about each attribute on our dedicated 
+section on [techdocs.akamai.com](https://techdocs.akamai.com/mfa/docs/field-sequence)
 
 ## Command examples
 
@@ -70,22 +71,15 @@ Inline general help
 
 Inline help for auth event
 ```
-% akamai mfa event auth --help
+% akamai mfa event --help
 ```
 
-Try to pull MFA events with the following examples.
+Try to pull MFA security events with the following examples.
 When ``--start`` is omitted, start is set to 5 minutes ago.
 When ``--end`` is omitted, end takes now minutes 30 seconds.
 
-For Authentication events:
-
 ```
-% akamai mfa event auth
-```
-
-For Policy events:
-```
-% akamai mfa event policy
+% akamai mfa event
 ```
 
 Version of `cli-mfa`
@@ -97,9 +91,9 @@ Version of `cli-mfa`
 
 ## Streaming Akamai MFA events to a SIEM
 
-Akamai MFA comes with a native Splunk App you can find on [SplunkBase](https://splunkbase.splunk.com/app/5490/).
+Akamai MFA comes with a native Splunk App for Splunk Enterprise you can find on [SplunkBase](https://splunkbase.splunk.com/app/5490/).
 
-If you are using a different SIEM, we are working on universal solution, please check out our [Unified Log Streamer (ULS)](https://github.com/akamai/uls) repository.
+If you are using a different Splunk edition or a different SIEM, check out our [Unified Log Streamer (ULS)](https://github.com/akamai/uls) repository.
 
 ## Support
 
