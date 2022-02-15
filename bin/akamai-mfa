@@ -85,7 +85,7 @@ class MFAConfig():
         eventparser.add_argument("--noreceipt", default=False, action="store_true",
                                  help="Discard the receipt attribute to save log space")
 
-        self.parser.add_argument("--edgerc", type=argparse.FileType('r'), default=os.path.expanduser("~/.edgerc"),
+        self.parser.add_argument("--edgerc", type=str, default="~/.edgerc",
                                  help='Location of the credentials file (default is "~/.edgerc")')
 
         self.parser.add_argument("--section", default="default", help="Section inside .edgerc, default is [default]")
