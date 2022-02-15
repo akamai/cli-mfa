@@ -39,7 +39,7 @@ import os
 import json
 
 #: cli-mfa version, see also cli.json
-__VERSION__ = "0.0.5"
+__VERSION__ = "0.0.7"
 #: Log formatting aligned with other CLIs
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 #: Near real-time, 30s ago is the most recent by default
@@ -86,8 +86,7 @@ class MFAConfig():
                                  help="Discard the receipt attribute to save log space")
 
         self.parser.add_argument("--edgerc", type=argparse.FileType('r'), default=os.path.expanduser("~/.edgerc"),
-                                 help='Location of the credentials file (default is %s)' %
-                                 os.path.expanduser("~/.edgerc"))
+                                 help='Location of the credentials file (default is "~/.edgerc")')
 
         self.parser.add_argument("--section", default="default", help="Section inside .edgerc, default is [default]")
         self.parser.add_argument("--debug", '-d', action="store_true", default=False, help="Debug mode")
@@ -104,11 +103,11 @@ class MFAConfig():
 
         # 2. Load MFA params from .edgerc
         edgerc_config = configparser.ConfigParser()
-        edgerc_config.read_file(self.edgerc)
+        edgerc_config.read(os.path.expanduser(self.edgerc))
         if not edgerc_config.has_section(self.section):
             err_msg = "ERROR: No section named %s was found in your .edgerc file\n" % self.section
             err_msg += "ERROR: Please generate credentials for the script functionality\n"
-            err_msg += "ERROR: and run 'python gen_edgerc.py %s' to generate the credential file\n" % self.edgerc.name
+            err_msg += "ERROR: and run 'python gen_edgerc.py %s' to generate the credential file\n" % self.edgerc
             sys.exit(err_msg)
         for key, value in edgerc_config.items(self.section):
             if key in MFAConfig.CONFIG_KEYS:

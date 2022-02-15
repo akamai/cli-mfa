@@ -5,7 +5,7 @@
     "commands": [
       {
         "name": "mfa",
-        "version": "0.0.5",
+        "version": "0.0.7",
         "description": "Akamai CLI for MFA"
       }
     ]
