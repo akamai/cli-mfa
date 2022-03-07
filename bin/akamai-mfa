@@ -27,7 +27,6 @@ https://learn.akamai.com/en-us/webhelp/enterprise-mfa/akamai-mfa-logs-from-splun
 
 from ctypes import ArgumentError
 import logging
-from nis import match
 import requests
 import hashlib
 import hmac
@@ -43,7 +42,7 @@ import csv
 
 
 #: cli-mfa version, see also cli.json
-__VERSION__ = "0.0.9"
+__VERSION__ = "0.0.9.1"
 #: Log formatting aligned with other CLIs
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 #: Near real-time, 30s ago is the most recent by default
