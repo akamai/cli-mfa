@@ -42,7 +42,7 @@ import csv
 
 
 #: cli-mfa version, see also cli.json
-__VERSION__ = "0.0.9.1"
+__VERSION__ = "0.0.10"
 #: Log formatting aligned with other CLIs
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 #: Near real-time, 30s ago is the most recent by default
@@ -78,6 +78,7 @@ class cli():
     @staticmethod
     def exit(code):
         sys.exit(code)
+
 
 class MFAConfig():
     """
@@ -126,7 +127,7 @@ class MFAConfig():
 
         # ad-hoc implementation to support MFA customers
         loaduserparser = subparsers.add_parser('importusers', help="Import users from a CSV file")
-        loaduserparser.add_argument("--file", "-f", help="CSV file used as input")
+        loaduserparser.add_argument("--file", "-f", required=True, help="CSV file used as input")
         loaduserparser.add_argument("--ignore-header", "-i", dest="ignore_header", default=False, action="store_true",
                                     help="Ignore the first line (if header is present)")
         loaduserparser.add_argument("--fullname-format", "-n", dest="fullname_format", default="{firstname} {lastname}",
@@ -203,7 +204,10 @@ class BaseAPI(object):
     def post(self, url, params=None, json=None):
         url = f"{mfa_api_url}{url}"
         api_response = self._session.post(url, params=params, json=json)
+        if api_response.status_code != 200:
+            raise Exception(f"Akamai MFA API response error HTTP/{api_response.status_code}, {api_response.text}")
         return api_response.json()
+
 
 class AkamaiMFAAuth(requests.auth.AuthBase):
     """
@@ -315,7 +319,8 @@ class IdentityManagementAPI(BaseAPI):
     def group_id(self, group_name):
         """
         Return Group ID for a given group name
-        If the group name is not found or API return more than one result, return None
+        If the group name is not found return None
+        If multiple matches, raise an exception
 
         Args:
             group_name (string): Group name
@@ -325,11 +330,14 @@ class IdentityManagementAPI(BaseAPI):
         """
         group_info = self.get("/api/v1/control/groups", params={'name': group_name})
         matches = group_info.get('result', {}).get('page', [])
-        match_count = len(matches)
-        if match_count != 1:
-            return None
-        else:
-            return matches[0].get('id')
+        group_id = None
+        for m in matches:
+            if m.get('name') == group_name:
+                if group_id is None:
+                    group_id = m.get('id')
+                else:
+                    raise Exception(f"Ambiguity, more than one group matching name {group_name}")
+        return group_id
 
     def create_group(self, group_name, group_summary=None):
         """Create a new group in MFA backend."""
