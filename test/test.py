@@ -75,7 +75,7 @@ class CliMFATest(unittest.TestCase):
     def duplicate_count(filename):
         total_count = 0
         with open(filename) as infile:
-            counts = collections.Counter(l.strip() for l in infile)
+            counts = collections.Counter(ln.strip() for ln in infile)
         for line, count in counts.most_common():
             if count > 1:
                 print(f"DUPLICATE[{count}] {line}")
@@ -95,8 +95,8 @@ class TestEvents(CliMFATest):
         cmd = self.cli_run("event", "--start", self.after, "--end", self.before)
         stdout, stderr = cmd.communicate(timeout=60)
         events = stdout.decode(encoding)
-        # event_count = len(events.splitlines())
-        # self.assertGreater(event_count, 0, "We expect at least one threat event")
+        event_count = len(events.splitlines())
+        self.assertGreater(event_count, 0, "We expect at least one MFA auth event")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
 

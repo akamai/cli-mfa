@@ -125,7 +125,7 @@ class MFAConfig():
         user_parser = subparsers.add_parser('users', help="User operations (search, import, etc...)")
         # userparser.add_argument("action", choices=['search', 'import', 'invite'])
         user_action_parser = user_parser.add_subparsers(dest="action", help='User operations (search, import, etc...)')
-        
+
         # usersearch_parser = user_action_parser.add_parser("search", help="Search users")
         # usersearch_parser.add_argument('-g', '--group', dest="group", help='Limit search to users in this group')
         # usersearch_parser.add_argument(dest='filter', default="*", help="Pattern to search user, default is *")
@@ -145,7 +145,7 @@ class MFAConfig():
         self.parser.add_argument("--edgerc", type=str, default="~/.edgerc",
                                  help='Location of the credentials file (default is "~/.edgerc")')
 
-        self.parser.add_argument("--section", '-c', 
+        self.parser.add_argument("--section", '-c',
                                  help="Section inside .edgerc, default is [default] ($AKAMAI_EDGERC_SECTION)",
                                  default=os.environ.get("AKAMAI_EDGERC_SECTION", "default"))
         self.parser.add_argument("--accountkey", "--account-key", help="Account Switch Key",
@@ -481,7 +481,8 @@ class IdentityManagementAPI(object):
         logger.debug("new_users: %s" % new_users_response)
         count_user_added = len(new_users_response.get('result', {}).get('created', []))
         count_user_exist = len(new_users_response.get('result', {}).get('existing', []))
-        cli.print(f"{count_user_added} user(s) added, {count_user_exist} user(s) where already existing and left unchanged")
+        cli.print(f"{count_user_added} user(s) added, "
+                  f"{count_user_exist} user(s) where already existing and left unchanged")
 
         # Third, associate user to group
         for new_user in new_users_response.get('result', {}).get('created', []):
