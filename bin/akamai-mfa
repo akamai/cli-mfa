@@ -25,6 +25,9 @@ https://learn.akamai.com/en-us/webhelp/enterprise-mfa/akamai-mfa-logs-from-splun
 
 """
 
+#: cli-mfa version, see also cli.json
+__VERSION__ = "0.0.10"
+
 from ctypes import ArgumentError
 import logging
 import requests
@@ -40,9 +43,10 @@ import os
 import json
 import csv
 
+# 3rd party modules
+from akamai.edgegrid import EdgeGridAuth
 
-#: cli-mfa version, see also cli.json
-__VERSION__ = "0.0.10"
+
 #: Log formatting aligned with other CLIs
 LOG_FMT = '%(asctime)s [%(levelname)s] %(threadName)s %(message)s'
 #: Near real-time, 30s ago is the most recent by default
@@ -50,11 +54,10 @@ MOST_RECENT_PADDING = 30
 
 log_file = None
 logger = logging.getLogger()
-mfa_api_url = "https://mfa.akamai.com"
-mfa_api_ver = "v1"
 tail_pull_interval = 60  # Default is 60 seconds
 epilog = '''Copyright (C) Akamai Technologies, Inc\n''' \
          '''Visit http://github.com/akamai/cli-mfa for detailed documentation'''
+
 
 class cli():
     """
@@ -86,10 +89,14 @@ class MFAConfig():
     """
 
     CONFIG_KEYS = [
-        'mfa_integration_id',
-        'mfa_signing_key',
-        'mfa_api_integration_id',
-        'mfa_api_signing_key'
+        'mfa_integration_id',      # SIEM Log Integration
+        'mfa_signing_key',         # SIEM Log Integration
+        'mfa_api_integration_id',  # Service API prior to {OPEN} launch - experimental
+        'mfa_api_signing_key',     # Service API prior to {OPEN} launch - experimental
+        'client_secret',           # {OPEN}
+        'host',                    # {OPEN}
+        'access_token',            # {OPEN}
+        'client_token'             # {OPEN}
     ]
 
     def __init__(self):
@@ -124,6 +131,8 @@ class MFAConfig():
         # usersearch_parser.add_argument(dest='filter', default="*", help="Pattern to search user, default is *")
         invite_parser = user_action_parser.add_parser("invite", help="Send enrollement invite over email")
         invite_parser.add_argument('-g', '--group', dest="group", help='Send invite to member of this group')
+        listuser_parser = user_action_parser.add_parser("list", help="List users")
+        listuser_parser.add_argument('--json', action="store_true", help='Format list of users as JSON')
 
         # ad-hoc implementation to support MFA customers
         loaduserparser = subparsers.add_parser('importusers', help="Import users from a CSV file")
@@ -136,7 +145,11 @@ class MFAConfig():
         self.parser.add_argument("--edgerc", type=str, default="~/.edgerc",
                                  help='Location of the credentials file (default is "~/.edgerc")')
 
-        self.parser.add_argument("--section", default="default", help="Section inside .edgerc, default is [default]")
+        self.parser.add_argument("--section", '-c', 
+                                 help="Section inside .edgerc, default is [default] ($AKAMAI_EDGERC_SECTION)",
+                                 default=os.environ.get("AKAMAI_EDGERC_SECTION", "default"))
+        self.parser.add_argument("--accountkey", "--account-key", help="Account Switch Key",
+                                 default=os.environ.get('AKAMAI_EDGERC_ACCOUNT_KEY'))
         self.parser.add_argument("--debug", '-d', action="store_true", default=False, help="Debug mode")
         self.parser.add_argument("--user-agent-prefix", dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
 
@@ -183,35 +196,81 @@ class MFAConfig():
         self.parser.print_help()
 
 
-class BaseAPI(object):
+class BaseAPIHelper(object):
 
     api_version = None  # Specific API can be overriden on derivated class
 
-    def __init__(self, config, signing_key=None, integration_id=None):
+    def __init__(self, config):
         self.config = config
         self._session = requests.Session()
         self._session.headers.update({'User-Agent': f'{config.ua_prefix} cli-mfa/{__VERSION__}'})
-        if not signing_key or not integration_id:  # use the default integration creds
-            self._session.auth = AkamaiMFAAuth(config.mfa_signing_key, config.mfa_integration_id, self.api_version)
-        else:
-            self._session.auth = AkamaiMFAAuth(signing_key, integration_id, self.api_version)
+        self.baseurl = ""
+
+    def prepare_querystring(self, qs_args):
+        """Allow inherting class to implement logic to inject querystring arguments."""
+        return qs_args
 
     def get(self, url, params=None):
-        url = f"{mfa_api_url}{url}"
-        api_response = self._session.get(url, params=params)
+        url = f"{self.baseurl}{url}"
+        api_response = self._session.get(url, params=self.prepare_querystring(params))
         return api_response.json()
 
     def post(self, url, params=None, json=None):
-        url = f"{mfa_api_url}{url}"
-        api_response = self._session.post(url, params=params, json=json)
+        url = f"{self.baseurl}{url}"
+        api_response = self._session.post(url, params=self.prepare_querystring(params), json=json)
         if api_response.status_code != 200:
             raise Exception(f"Akamai MFA API response error HTTP/{api_response.status_code}, {api_response.text}")
         return api_response.json()
 
 
+class MFAServiceAPIHelper(BaseAPIHelper):
+    """
+    Akamai MFA service API (experimental)
+    Please use OpenAPI whenever possible.
+    """
+
+    mfa_api_url = "https://mfa.akamai.com"
+    mfa_api_ver = "v1"
+
+    def __init__(self, config, signing_key=None, integration_id=None):
+        super().__init__(config)
+        self.baseurl = MFAServiceAPIHelper.mfa_api_url
+        if not signing_key or not integration_id:  # use the default integration creds
+            self._session.auth = AkamaiMFAAuth(config.mfa_signing_key, config.mfa_integration_id, self.api_version)
+        else:
+            self._session.auth = AkamaiMFAAuth(signing_key, integration_id, self.api_version)
+
+
+class OpenAPIHelper(BaseAPIHelper):
+    """
+    Akamai MFA {OPEN} API
+    See https://techdocs.akamai.com/mfa/reference/api for more information
+
+    TODO: pass the user-agent as querystring
+    """
+    def __init__(self, config):
+        super().__init__(config)
+        self.baseurl = f"https://{config.host}"
+        self._session.auth = EdgeGridAuth(
+            client_token=config.client_token,
+            client_secret=config.client_secret,
+            access_token=config.access_token
+        )
+
+    def prepare_querystring(self, qs_args):
+        args = super().prepare_querystring(qs_args)
+        if isinstance(args, dict):
+            final_params = qs_args.copy()
+        else:
+            final_params = {}
+        if self.config.accountkey:
+            final_params.update({"accountSwitchKey": self.config.accountkey})
+        return final_params
+
+
 class AkamaiMFAAuth(requests.auth.AuthBase):
     """
-    Akamai MFA API authentication for Requests.
+    Akamai MFA Integration authentication for Requests.
     """
 
     def __init__(self, signing_key, integration_id, api_version=None):
@@ -255,7 +314,7 @@ class EventAPI(object):
         session.headers.update({'User-Agent': f'{config.ua_prefix} cli-mfa/{__VERSION__}'})
         session.auth = AkamaiMFAAuth(config.mfa_signing_key, config.mfa_integration_id)
 
-        api_url = f'{mfa_api_url}/api/{mfa_api_ver}/control/reports/auths'
+        api_url = f'{MFAServiceAPIHelper.mfa_api_url}/api/{MFAServiceAPIHelper.mfa_api_ver}/control/reports/auths'
         scan_end = datetime.datetime.utcnow() - datetime.timedelta(seconds=MOST_RECENT_PADDING)
         scan_start = scan_end - datetime.timedelta(minutes=5)
         if config.end:
@@ -300,21 +359,34 @@ class EventAPI(object):
                 break
 
 
-class IdentityManagementAPI(BaseAPI):
+class IdentityManagementAPI(object):
+    """
+    Manage users/groups on Akamai MFA
+    """
 
     api_version = "2022-02-22"
 
-    """
-    Manage users/groups on Akamai MFA
+    def __init__(self, config):
+        """
+        This class use two different API set with different auth logic.
+        We prepare them here based on what's available in the .edgerc file.
+        """
+        self.service_api_helper = None
+        self.open_api_helper = None
+        if hasattr(config, "mfa_api_signing_key") and hasattr(config, "mfa_api_integration_id"):
+            self.service_api_helper = MFAServiceAPIHelper(
+                config,
+                config.mfa_api_signing_key,
+                config.mfa_api_integration_id
+            )
+        if config.host:
+            self.open_api_helper = OpenAPIHelper(config)
 
-    Args:
-        object (_type_): _description_
-    """
     def list_groups(self):
         """
         Fetch the list of groups visible in Akamai MFA.
         """
-        return self.get("/api/v1/control/groups")
+        return self.service_api_helper.get("/api/v1/control/groups")
 
     def group_id(self, group_name):
         """
@@ -328,7 +400,7 @@ class IdentityManagementAPI(BaseAPI):
         Returns:
             string: ID of the group found
         """
-        group_info = self.get("/api/v1/control/groups", params={'name': group_name})
+        group_info = self.service_api_helper.get("/api/v1/control/groups", params={'name': group_name})
         matches = group_info.get('result', {}).get('page', [])
         group_id = None
         for m in matches:
@@ -345,16 +417,16 @@ class IdentityManagementAPI(BaseAPI):
             "name": group_name,
             "summary": group_summary
         }
-        return self.post("/api/v1/control/groups", json=payload)
+        return self.service_api_helper.post("/api/v1/control/groups", json=payload)
 
     def create_users(self, users):
         payload = {"ignore_conflicts": True, "users": users}
         logger.debug("create_users payload %s" % payload)
-        return self.post("/api/v1/control/users/bulk/create", json=payload)
+        return self.service_api_helper.post("/api/v1/control/users/bulk/create", json=payload)
 
     def associate_users_to_group(self, usernames, group_id):
         logger.debug(f"Adding users {usernames} to group {group_id}")
-        return self.post(f"/api/v1/control/groups/{group_id}/users/bulk/associate", json=usernames)
+        return self.service_api_helper.post(f"/api/v1/control/groups/{group_id}/users/bulk/associate", json=usernames)
 
     def import_users_from_csv(self, csv_filename, ignore_header, fullname_format):
         """
@@ -430,8 +502,30 @@ class IdentityManagementAPI(BaseAPI):
         payload = {'exclude_enrolled_users': True}
         payload["groups"] = [group_id]
         cli.print("Sending enrollment email to ununrolled users in group %s..." % group_name)
-        response = self.post("/api/v1/control/email/enroll_users", json=payload)
+        response = self.service_api_helper.post("/api/v1/control/email/enroll_users", json=payload)
         logger.debug(response)
+
+    def list_users(self, json_fmt=False):
+        """
+        List the users synchronized with the MFA tenant.
+        """
+        page = 1
+        total_page = None
+        total_users = 0
+
+        while total_page is None or page <= total_page:
+            logger.info(f"Page {page}")
+            scan_users = self.open_api_helper.get('/amfa/v1/users', {'page': page})
+            total_page = scan_users.get('totalPages', 1)
+            page += 1
+            for u in scan_users.get('users', []):
+                if json_fmt:
+                    cli.print(json.dumps(u, indent=4))
+                else:
+                    cli.print(f"{u.get('userId')},{u.get('username')},{u.get('userStatus')}")
+                total_users += 1
+
+        cli.print(f"# Total users exported: {total_users}")
 
 
 if __name__ == "__main__":
@@ -456,15 +550,18 @@ if __name__ == "__main__":
     elif config.command == 'event':
         EventAPI.pull_events()
     elif config.command == 'users':
-        identity = IdentityManagementAPI(config, config.mfa_api_signing_key, config.mfa_api_integration_id)
+        identity = IdentityManagementAPI(config)
         if config.action == "invite":
             identity.enroll_users(config.group)
+        elif config.action == "list":
+            identity.list_users()
+            pass
         else:
             cli.write("not supported")
             cli.exit(1)
     elif config.command == 'importusers':
         logger.debug("starting import...")
-        identity = IdentityManagementAPI(config, config.mfa_api_signing_key, config.mfa_api_integration_id)
+        identity = IdentityManagementAPI(config)
         identity.import_users_from_csv(config.file, config.ignore_header, config.fullname_format)
     else:
         raise ValueError(f"Unsupported command: {config.command}")

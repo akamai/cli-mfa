@@ -19,7 +19,7 @@ Tested with nose2:
 ```bash
 
 # Optional
-EDGERC_SECTION=mysection
+AKAMAI_EDGERC_SECTION=mysection
 # End Optional
 
 cd test
@@ -56,8 +56,7 @@ class CliMFATest(unittest.TestCase):
 
     def cli_command(self, *args):
         command = shlex.split(f'python3 {self.maindir}/bin/akamai-mfa')
-        if os.environ.get('EDGERC_SECTION'):
-            command.extend(["--section", os.environ['EDGERC_SECTION']])
+        # command.extend(["--somearg", os.environ['somevariable']])
         command.extend(*args)
         print("\nCOMMAND: ", " ".join(command))
         return command
@@ -102,6 +101,13 @@ class TestEvents(CliMFATest):
 
 
 class TestUserGroupManagement(CliMFATest):
+
+    def test_list(self):
+        cmd = self.cli_run('users', 'list')
+        stdout, stderr = cmd.communicate()
+        print(stdout)
+        print(stderr)
+        self.assertEquals(cmd.returncode, 0, 'CLI return code must be 0')
 
     def test_invite(self):
         cmd = self.cli_run('users', 'invite', '-g', 'NEW_GROUP')
