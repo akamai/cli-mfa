@@ -26,7 +26,7 @@ https://learn.akamai.com/en-us/webhelp/enterprise-mfa/akamai-mfa-logs-from-splun
 """
 
 #: cli-mfa version, see also cli.json
-__VERSION__ = "0.0.10"
+__VERSION__ = "0.1.0-dev"
 
 from ctypes import ArgumentError
 import logging
@@ -96,7 +96,9 @@ class MFAConfig():
         'client_secret',           # {OPEN}
         'host',                    # {OPEN}
         'access_token',            # {OPEN}
-        'client_token'             # {OPEN}
+        'client_token',            # {OPEN}
+        'contract_id',             # {OPEN}
+        'accountkey'               # {OPEN}
     ]
 
     def __init__(self):
@@ -203,8 +205,12 @@ class BaseAPIHelper(object):
     def __init__(self, config):
         self.config = config
         self._session = requests.Session()
-        self._session.headers.update({'User-Agent': f'{config.ua_prefix} cli-mfa/{__VERSION__}'})
+        self._session.headers.update({'User-Agent': self.user_agent})
         self.baseurl = ""
+
+    @property
+    def user_agent(self):
+        return f'{config.ua_prefix} cli-mfa/{__VERSION__}'
 
     def prepare_querystring(self, qs_args):
         """Allow inherting class to implement logic to inject querystring arguments."""
@@ -213,6 +219,12 @@ class BaseAPIHelper(object):
     def get(self, url, params=None):
         url = f"{self.baseurl}{url}"
         api_response = self._session.get(url, params=self.prepare_querystring(params))
+        if api_response.status_code != requests.codes.ok:
+            error_msg = f"FATAL: API call {api_response.request.method} {api_response.url} " \
+                        f"returned HTTP/{api_response.status_code}"
+            cli.print_error(error_msg)
+            cli.print_error(api_response.text)
+            cli.exit(1)
         return api_response.json()
 
     def post(self, url, params=None, json=None):
@@ -226,7 +238,7 @@ class BaseAPIHelper(object):
 class MFAServiceAPIHelper(BaseAPIHelper):
     """
     Akamai MFA service API (experimental)
-    Please use OpenAPI whenever possible.
+    DO NOT USE, use {OPEN} API through `OpenAPIHelper` whenever possible.
     """
 
     mfa_api_url = "https://mfa.akamai.com"
@@ -239,6 +251,20 @@ class MFAServiceAPIHelper(BaseAPIHelper):
             self._session.auth = AkamaiMFAAuth(config.mfa_signing_key, config.mfa_integration_id, self.api_version)
         else:
             self._session.auth = AkamaiMFAAuth(signing_key, integration_id, self.api_version)
+
+
+class MFALoggingAPIHelper(BaseAPIHelper):
+    """
+    Akamai MFA Logging Integration API
+    """
+
+    mfa_api_url = "https://mfa.akamai.com"
+    mfa_api_ver = "v1"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.baseurl = MFAServiceAPIHelper.mfa_api_url
+        self._session.auth = AkamaiMFAAuth(config.mfa_signing_key, config.mfa_integration_id)
 
 
 class OpenAPIHelper(BaseAPIHelper):
@@ -265,6 +291,9 @@ class OpenAPIHelper(BaseAPIHelper):
             final_params = {}
         if self.config.accountkey:
             final_params.update({"accountSwitchKey": self.config.accountkey})
+        if hasattr(config, "contract_id") and self.config.contract_id:
+            final_params.update({"contractId": self.config.contract_id})
+        final_params.update({"ua": self.user_agent})
         return final_params
 
 
@@ -310,11 +339,8 @@ class EventAPI(object):
 
     @staticmethod
     def pull_events():
-        session = requests.Session()
-        session.headers.update({'User-Agent': f'{config.ua_prefix} cli-mfa/{__VERSION__}'})
-        session.auth = AkamaiMFAAuth(config.mfa_signing_key, config.mfa_integration_id)
-
-        api_url = f'{MFAServiceAPIHelper.mfa_api_url}/api/{MFAServiceAPIHelper.mfa_api_ver}/control/reports/auths'
+        api_helper = MFALoggingAPIHelper(config)
+        api_url = f'/api/{api_helper.mfa_api_ver}/control/reports/auths'
         scan_end = datetime.datetime.utcnow() - datetime.timedelta(seconds=MOST_RECENT_PADDING)
         scan_start = scan_end - datetime.timedelta(minutes=5)
         if config.end:
@@ -334,9 +360,8 @@ class EventAPI(object):
                 payload = {}
                 if continuation_token:
                     payload = {'continuation_token': continuation_token}
-                r = session.post(api_url, params=params, json=payload)
+                api_response = api_helper.post(api_url, params=params, json=payload)
 
-                api_response = r.json()
                 continuation_token = api_response.get('continuation_token')
                 scanned_events = api_response.get('result', {}).get('data', [])
 
@@ -479,13 +504,10 @@ class IdentityManagementAPI(object):
         # Second, bulk user insertion
         new_users_response = self.create_users(new_users)
         logger.debug("new_users: %s" % new_users_response)
-        count_user_added = len(new_users_response.get('result', {}).get('created', []))
-        count_user_exist = len(new_users_response.get('result', {}).get('existing', []))
-        cli.print(f"{count_user_added} user(s) added, "
-                  f"{count_user_exist} user(s) where already existing and left unchanged")
+        cli.print(f"{len(new_users_response.get('result'))} user(s) added or changed")
 
         # Third, associate user to group
-        for new_user in new_users_response.get('result', {}).get('created', []):
+        for new_user in new_users_response.get('result', []):
             group_id = reverse_groups_map[user_groupname_map[new_user.get('username')]]
             self.associate_users_to_group([new_user.get('id')], group_id)
 
@@ -511,12 +533,14 @@ class IdentityManagementAPI(object):
         List the users synchronized with the MFA tenant.
         """
         page = 1
+        page_size = 500
         total_page = None
         total_users = 0
 
         while total_page is None or page <= total_page:
-            logger.info(f"Page {page}")
-            scan_users = self.open_api_helper.get('/amfa/v1/users', {'page': page})
+            logger.info(f"Page {page} of {total_page if total_page else 'unknown'}")
+            params = {'page': page, 'pageSize': page_size}
+            scan_users = self.open_api_helper.get('/amfa/v1/users', params)
             total_page = scan_users.get('totalPages', 1)
             page += 1
             for u in scan_users.get('users', []):

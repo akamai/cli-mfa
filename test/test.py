@@ -65,6 +65,13 @@ class CliMFATest(unittest.TestCase):
         cmd = subprocess.Popen(self.cli_command(str(a) for a in args), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return cmd
 
+    def cli_debugoutput(self, h, line_prefix=""):
+        "Handy function to print the CLI output."
+        line_count = 1
+        for line in h.decode().splitlines():
+            print(f"{line_count:4} {line_prefix} {line}")
+            line_count += 1
+
     def line_count(filename):
         count = 0
         with open(filename) as f:
@@ -85,15 +92,19 @@ class CliMFATest(unittest.TestCase):
 
 class TestEvents(CliMFATest):
 
-    after = int(time.time() - 15 * 60)
+    after = int(time.time() - 3 * 60 * 60)
     before = int(time.time())
 
     def test_events(self):
         """
-        Fetch MFA events
+        Fetch MFA authentication events
         """
         cmd = self.cli_run("event", "--start", self.after, "--end", self.before)
         stdout, stderr = cmd.communicate(timeout=60)
+        if cmd.returncode != 0:
+            print(f"STDERR> {stderr.decode()} <STDERR")
+        else:
+            print(f"STDOUT> {stdout.decode()} <STDOUT")
         events = stdout.decode(encoding)
         event_count = len(events.splitlines())
         self.assertGreater(event_count, 0, "We expect at least one MFA auth event")
@@ -105,8 +116,8 @@ class TestUserGroupManagement(CliMFATest):
     def test_list(self):
         cmd = self.cli_run('users', 'list')
         stdout, stderr = cmd.communicate()
-        print(stdout)
-        print(stderr)
+        print(stdout.decode())
+        print(stderr.decode())
         self.assertEquals(cmd.returncode, 0, 'CLI return code must be 0')
 
     def test_invite(self):
@@ -125,16 +136,19 @@ class TestUserGroupManagement(CliMFATest):
             f"""user3@{domain},User3,Lastname3,user3.lastname3,NEW_GROUP\n""" \
             f"""user4@{domain},User4,Lastname4_Kichirō,user4.lastname4,NEW_GROUP\n""" \
             f"""user5@{domain},User5,Lastname5,user5.lastname5,NEW_GROUP2\n""" \
-            f"""user6@{domain},User6,Lastname6,user6.lastname6,NEW_GROUP2\n"""
+            f"""user6@{domain},User6,Lastname6,user6.lastname6,NEW_GROUP2\n""" \
+            f"""user7@{domain},User8,Lastname8,user8.lastname7,NEW_GROUP2\n"""
 
         csv_fp, csv_filename = tempfile.mkstemp(text=True)
         with os.fdopen(csv_fp, 'w+t') as f:
             f.write(csv_content)
 
-        cmd = self.cli_run('importusers', '--ignore-header', '-f', csv_filename)
+        cmd = self.cli_run('-d', 'importusers', '--ignore-header', '-f', csv_filename)
         stdout, stderr = cmd.communicate()
-        print(stdout)
-        print(stderr)
+        if cmd.returncode != 0:
+            self.cli_debugoutput(stderr, "stderr>")
+        else:
+            self.cli_debugoutput(stdout, "stdout>")
         os.unlink(csv_filename)
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
@@ -152,7 +166,6 @@ class TestCliMFA(CliMFATest):
         """
         cmd = self.cli_run('--edgerc', 'file_not_exist')
         stdout, stderr = cmd.communicate()
-        output = stdout.decode(encoding)
         error = stderr.decode(encoding)
         self.assertIn("ERROR: No section", error)
         self.assertEqual(cmd.returncode, 1, 'return code must be 1')
