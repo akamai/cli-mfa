@@ -36,6 +36,7 @@ import hmac
 import time
 import datetime
 from http.client import HTTPConnection
+from math import ceil
 import argparse
 import configparser
 import sys
@@ -82,6 +83,13 @@ class cli():
     def exit(code):
         sys.exit(code)
 
+    @staticmethod
+    def mask_string(s, percentage=0.9):
+        if s is None:
+            return None
+        mask_chars = ceil(len(s) * percentage)
+        return f'{"*" * mask_chars}{s[mask_chars:]}'
+
 
 class MFAConfig():
     """
@@ -105,6 +113,8 @@ class MFAConfig():
 
         self.mfa_integration_id = None
         self.mfa_signing_key = None
+        self.mfa_api_integration_id = None
+        self.mfa_api_signing_key = None
 
         # 1. Scan parameters from the CLI arguments
 
@@ -114,6 +124,7 @@ class MFAConfig():
 
         subparsers = self.parser.add_subparsers(dest='command', help='Main command')
         subparsers.add_parser('version', help="Display CLI-MFA version")
+        subparsers.add_parser('info', help="Show CLI-MFA configuration informations")
         eventparser = subparsers.add_parser('event', help="Dump MFA events")
         eventparser.add_argument("--start", "-s", default=None, type=int, help="Scan for events after this epoch")
         eventparser.add_argument("--end", "-e", default=None, type=int, help="Scan for events before this epoch")
@@ -182,20 +193,60 @@ class MFAConfig():
         if os.getenv('MFA_SIGNING_KEY'):
             self.signing_key = os.getenv('MFA_SIGNING_KEY')
         if os.getenv('MFA_API_INTEGRATION_ID'):
-            self.api_integration_id = os.getenv('MFA_API_INTEGRATION_ID')
+            self.mfa_api_integration_id = os.getenv('MFA_API_INTEGRATION_ID')
         if os.getenv('MFA_API_SIGNING_KEY'):
-            self.api_signing_key = os.getenv('MFA_API_SIGNING_KEY')
-
-        self.validate()
-
-    def validate(self):
-        if not hasattr(self, 'mfa_integration_id'):
-            raise RuntimeError("Missing mfa_integration_id")
-        if not hasattr(self, 'mfa_signing_key'):
-            raise RuntimeError("Missing mfa_signing_key")
+            self.mfa_api_signing_key = os.getenv('MFA_API_SIGNING_KEY')
 
     def display_help(self):
         self.parser.print_help()
+
+    def info(self):
+        """
+        Display information about the current CLI.
+        Helpful for troubleshooting
+        """
+        config_info = {
+            "general": {
+                "cli-mfa_version": __VERSION__,
+                "python": sys.version.replace("\n", " "),
+                "akamai_cli": os.environ.get("AKAMAI_CLI_VERSION"),
+                "edgerc_file": self.edgerc,
+                "edgerc_section": self.section
+            }
+        }
+
+        # Logging Integration API
+        if self.mfa_integration_id or self.mfa_signing_key:
+            config_info["amfa-logging-api"] = {}
+            if self.mfa_integration_id:
+                config_info["amfa-logging-api"]["mfa_integration_id"] = self.mfa_integration_id
+            if self.mfa_signing_key:
+                config_info["amfa-logging-api"]["mfa_signing_key"] = cli.mask_string(self.mfa_signing_key)
+
+        # Akamai MFA Service API (unsupported, do not use)
+        if self.mfa_api_integration_id or self.mfa_api_signing_key:
+            config_info["amfa-service-api"] = {}
+            if self.mfa_api_integration_id:
+                config_info["amfa-service-api"]["mfa_api_integration_id"] = self.mfa_api_integration_id
+            if self.mfa_api_signing_key:
+                config_info["amfa-service-api"]["mfa_api_signing_key"] = cli.mask_string(self.mfa_api_signing_key)
+
+        # {OPEN} API
+        config_info["akamai-open-api"] = {}
+        if hasattr(self, "host"):
+            config_info["akamai-open-api"]["host"] = self.host
+        if hasattr(self, "access_token"):
+            config_info["akamai-open-api"]["access_token"] = cli.mask_string(self.access_token)
+        if hasattr(self, "client_token"):
+            config_info["akamai-open-api"]["client_token"] = cli.mask_string(self.client_token)
+        if hasattr(self, "client_secret"):
+            config_info["akamai-open-api"]["client_secret"] = cli.mask_string(self.client_secret)
+        if hasattr(self, "accountkey") and self.accountkey:
+            config_info["akamai-open-api"]["accountkey"] = self.accountkey
+        if hasattr(self, "contract_id") and self.contract_id:
+            config_info["akamai-open-api"]["contract_id"] = self.contract_id
+
+        return config_info
 
 
 class BaseAPIHelper(object):
@@ -271,8 +322,6 @@ class OpenAPIHelper(BaseAPIHelper):
     """
     Akamai MFA {OPEN} API
     See https://techdocs.akamai.com/mfa/reference/api for more information
-
-    TODO: pass the user-agent as querystring
     """
     def __init__(self, config):
         super().__init__(config)
@@ -398,7 +447,7 @@ class IdentityManagementAPI(object):
         """
         self.service_api_helper = None
         self.open_api_helper = None
-        if hasattr(config, "mfa_api_signing_key") and hasattr(config, "mfa_api_integration_id"):
+        if config.mfa_api_signing_key and config.mfa_api_integration_id:
             self.service_api_helper = MFAServiceAPIHelper(
                 config,
                 config.mfa_api_signing_key,
@@ -572,6 +621,8 @@ if __name__ == "__main__":
     elif config.command == "version":
         print(__VERSION__)
         sys.exit(0)
+    elif config.command == "info":
+        cli.print(json.dumps(config.info(), indent=4))
     elif config.command == 'event':
         EventAPI.pull_events()
     elif config.command == 'users':
@@ -582,7 +633,7 @@ if __name__ == "__main__":
             identity.list_users()
             pass
         else:
-            cli.write("not supported")
+            cli.print_error("not supported")
             cli.exit(1)
     elif config.command == 'importusers':
         logger.debug("starting import...")
