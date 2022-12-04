@@ -65,12 +65,18 @@ class CliMFATest(unittest.TestCase):
         cmd = subprocess.Popen(self.cli_command(str(a) for a in args), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return cmd
 
-    def cli_debugoutput(self, h, line_prefix=""):
+    def cli_debug_print_output(self, h, line_prefix=""):
         "Handy function to print the CLI output."
         line_count = 1
         for line in h.decode().splitlines():
             print(f"{line_count:4} {line_prefix} {line}")
             line_count += 1
+
+    def cli_debug_output(self, return_code, stdout, stderr=None):
+        if return_code != 0 and stderr:
+            self.cli_debug_print_output(stderr, "stderr>")
+        else:
+            self.cli_debug_print_output(stdout, "stdout>")
 
     def line_count(filename):
         count = 0
@@ -96,9 +102,7 @@ class TestEvents(CliMFATest):
     before = int(time.time())
 
     def test_events(self):
-        """
-        Fetch MFA authentication events
-        """
+        "Fetch MFA authentication events for last 3 hours."
         cmd = self.cli_run("event", "--start", self.after, "--end", self.before)
         stdout, stderr = cmd.communicate(timeout=60)
         if cmd.returncode != 0:
@@ -114,17 +118,16 @@ class TestEvents(CliMFATest):
 class TestUserGroupManagement(CliMFATest):
 
     def test_list(self):
-        cmd = self.cli_run('users', 'list')
+        "List the users configured in the Akamai MFA tenant."
+        cmd = self.cli_run('-d', 'users', 'list')
         stdout, stderr = cmd.communicate()
-        print(stdout.decode())
-        print(stderr.decode())
+        self.cli_debug_output(cmd.returncode, stdout, stderr)
         self.assertEquals(cmd.returncode, 0, 'CLI return code must be 0')
 
     def test_invite(self):
         cmd = self.cli_run('users', 'invite', '-g', 'NEW_GROUP')
         stdout, stderr = cmd.communicate()
-        print(stdout)
-        print(stderr)
+        self.cli_debug_output(cmd.returncode, stdout, stderr)
         self.assertEquals(cmd.returncode, 0, 'CLI return code must be 0')
 
     def test_import_csv(self):
@@ -145,16 +148,14 @@ class TestUserGroupManagement(CliMFATest):
 
         cmd = self.cli_run('-d', 'importusers', '--ignore-header', '-f', csv_filename)
         stdout, stderr = cmd.communicate()
-        if cmd.returncode != 0:
-            self.cli_debugoutput(stderr, "stderr>")
-        else:
-            self.cli_debugoutput(stdout, "stdout>")
+        self.cli_debug_output(cmd.returncode, stdout, stderr)
         os.unlink(csv_filename)
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
     def test_csvfiledoesntexist(self):
         cmd = self.cli_run('importusers', '-f', 'csv_file_not_exist')
         stdout, stderr = cmd.communicate()
+        self.cli_debug_output(cmd.returncode, stdout, stderr)
         self.assertGreater(cmd.returncode, 0, 'CLI return code must be strictly positive')
 
 
@@ -166,9 +167,15 @@ class TestCliMFA(CliMFATest):
         """
         cmd = self.cli_run('--edgerc', 'file_not_exist')
         stdout, stderr = cmd.communicate()
-        error = stderr.decode(encoding)
-        self.assertIn("ERROR: No section", error)
+        self.cli_debug_output(cmd.returncode, stdout, stderr)
+        self.assertIn("ERROR: No section", stderr.decode())
         self.assertEqual(cmd.returncode, 1, 'return code must be 1')
+
+    def test_cli_info(self):
+        cmd = self.cli_run('info')
+        stdout, stderr = cmd.communicate()
+        self.assertIn("cli-mfa_version", stdout.decode(encoding), "string 'cli-mfa_version' must exists")
+        self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
     def test_cli_version(self):
         """
@@ -176,7 +183,8 @@ class TestCliMFA(CliMFATest):
         """
         cmd = self.cli_run('version')
         stdout, stderr = cmd.communicate()
-        self.assertRegex(stdout.decode(encoding), r'[0-9]+\.[0-9]+\.[0-9]+\n', 'Version should be x.y.z')
+        self.assertRegex(stdout.decode(encoding), r'[0-9]+\.[0-9]+\.[0-9]+(-[a-z]*)+\n', 
+                         'Version should be formatted as x.y.z or x.y.z-tag')
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
 

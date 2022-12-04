@@ -1,19 +1,23 @@
-# Akamai CLI: MFA
+# Akamai CLI: MFA<!-- omit in toc -->
 
-Welcome to the Akamai MFA module for Akamai CLI.
+Welcome to the Akamai MFA package for Akamai CLI, *cli-mfa* for short.  
 For more information about Akamai MFA, see https://www.akamai.com/mfa
 
 ## Table of contents<!-- omit in toc -->
 
-- [Akamai CLI: MFA](#akamai-cli-mfa)
-  - [Pre-requisites](#pre-requisites)
-    - [Akamai CLI](#akamai-cli)
-    - [Python](#python)
-  - [Getting started](#getting-started)
-  - [Field documentation](#field-documentation)
-  - [Command examples](#command-examples)
-  - [Streaming Akamai MFA events to a SIEM](#streaming-akamai-mfa-events-to-a-siem)
-  - [Support](#support)
+- [Pre-requisites](#pre-requisites)
+  - [Akamai CLI](#akamai-cli)
+  - [Python 3](#python-3)
+- [Getting started](#getting-started)
+  - [API Credentials to interact with Akamai MFA configuration](#api-credentials-to-interact-with-akamai-mfa-configuration)
+  - [API Credentials to fetch authentication events](#api-credentials-to-fetch-authentication-events)
+  - [Advanced usage](#advanced-usage)
+- [Command examples](#command-examples)
+  - [General information and inline help](#general-information-and-inline-help)
+  - [Fetch authentification events](#fetch-authentification-events)
+  - [MFA identity management (users, groups...)](#mfa-identity-management-users-groups)
+- [Streaming Akamai MFA events to a SIEM](#streaming-akamai-mfa-events-to-a-siem)
+- [Support](#support)
 
 
 ## Pre-requisites
@@ -27,16 +31,46 @@ Download the CLI from [https://techdocs.akamai.com/developer/docs/about-clis](ht
 
 For more information, please visit the [Getting Started video](https://www.youtube.com/watch?v=BbojoaTTT3A).
 
-### Python
+### Python 3
 
-Beyond Akamai CLI pre-requisites, `cli-mfa` requires Python 3.6 or greater on your system, as well as `pip`.
+Beyond Akamai CLI pre-requisites, `cli-mfa` requires Python 3.7 or greater on your system, as well as Python Package manager `pip`.
 
 You can verify by opening a shell and type `python --version` and `pip --version`
 If you don't have Python on your system, go to [https://www.python.org](https://www.python.org).
 
 ## Getting started
 
-You'll need to configure an logging integration in [Akamai Control Center](https://control.akamai.com).
+`cli-mfa` allows to interact with different Akamai MFA components:
+
+- Configuration, to manage your various Akamai MFA setup (users, group, policy, ...)
+- Logging Integration, to pull authentication events
+
+Each comes with its set of API credentials, so depending on the operation you're looking for, you may need one or two sets of credentials. Instructions provided below.
+
+### API Credentials to interact with Akamai MFA configuration 
+
+For any other *cli-mfa* operations you will need you Akamai {OPEN} credentials.
+
+In [Akamai Control Center](https://control.akamai.com), make sure you create an API user 
+with the _Akamai MFA_ (`/amfa`) with `READ-WRITE` or `READ` permission.  
+If you choose `READ`, *cli-mfa* will be allowed to perform only API HTTP `GET` class.
+
+Upon user credential creation, you'll get a `.edgerc` file with 4 parameters.
+
+The value of the parameter is a integer you can obtain by navigating in Akamai Control Center: 
+
+Example of `.edgerc` file:
+```
+[default]
+client_secret = client-secret-goes-here
+host = akab-xxxx.luna.akamaiapis.net
+access_token = your-access-token
+client_token = your-client-token
+```
+
+### API Credentials to fetch authentication events
+
+To be able to use the command `akamai mfa events` you'll need to configure an logging integration in [Akamai Control Center](https://control.akamai.com).
 
 - Use left navigation (mega menu) and select Enterprise Center
 - Open **MFA** > **Integrations**
@@ -45,7 +79,7 @@ You'll need to configure an logging integration in [Akamai Control Center](https
 - Set a name, e.g. *cli-mfa*
 - Click and **Save and Deploy**
 
-Now, copy both Integration ID and Signing Key
+Now, copy both **Integration ID** and **Signing Key**
 
 Add them both into your `~/.edgerc` file, either in the [default] section or one of your choice:
 
@@ -55,24 +89,62 @@ mfa_integration_id = app_12345abcdef
 mfa_signing_key = some-random-key
 ```
 
+### Advanced usage
+
 If you are working with multiple tenants, create a different integration credentials in each tenant and place them into different section of the `.edgerc` file.
 
-## Field documentation
-
-Output is using JSON formatting, you'll find all the details about each attribute on our dedicated 
-section on [techdocs.akamai.com](https://techdocs.akamai.com/mfa/docs/field-sequence)
+To verify your configuration, you may use `akamai mfa info`, see example below.
 
 ## Command examples
 
-Inline general help
+### General information and inline help
+
+General help:
 ```
 % akamai mfa --help
 ```
 
-Inline help for auth event
+Help about fetching Akamai MFA authentication events:
 ```
 % akamai mfa event --help
 ```
+
+Information about your *cli-mfa* configuration
+```
+% akamai mfa info
+```
+output:
+```json
+{
+    "general": {
+        "cli-mfa_version": "1.2.3",
+        "python": "3.8.15 (default, Oct 11 2022, 21:52:37)",
+        "akamai_cli": "1.5.1",
+        "edgerc_file": "~/.edgerc",
+        "edgerc_section": "default"
+    },
+    "amfa-logging-api": {
+        "mfa_integration_id": "app_12345abcdef",
+        "mfa_signing_key": "************************abcd"
+    },
+    "akamai-open-api": {
+        "host": "akab-xxxx.luna.akamaiapis.net",
+        "access_token": "your-access-token",
+        "client_token": "your-client-token",
+        "client_secret": "**********client-secret-goes-here",
+        "contract_id": "1-123-456"
+    }
+}
+```
+
+Version of `cli-mfa`
+
+```
+% akamai mfa version
+1.2.3
+```
+
+### Fetch authentification events
 
 Try to pull MFA security events with the following examples.
 When ``--start`` is omitted, start is set to 5 minutes ago.
@@ -82,11 +154,11 @@ When ``--end`` is omitted, end takes now minutes 30 seconds.
 % akamai mfa event
 ```
 
-Version of `cli-mfa`
+### MFA identity management (users, groups...)
 
+List of all the users:
 ```
-% akamai mfa version
-1.2.3
+% akamai users list
 ```
 
 ## Streaming Akamai MFA events to a SIEM
