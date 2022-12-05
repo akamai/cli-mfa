@@ -183,7 +183,7 @@ class TestCliMFA(CliMFATest):
         """
         cmd = self.cli_run('version')
         stdout, stderr = cmd.communicate()
-        self.assertRegex(stdout.decode(encoding), r'[0-9]+\.[0-9]+\.[0-9]+(-[a-z]*)+\n', 
+        self.assertRegex(stdout.decode(encoding), r'[0-9]+\.[0-9]+\.[0-9]+(-[a-z]*)+\n',
                          'Version should be formatted as x.y.z or x.y.z-tag')
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
