@@ -112,7 +112,7 @@ class OpenAPIHelper(BaseAPIHelper):
             final_params = {}
         if self.config.accountkey:
             final_params.update({"accountSwitchKey": self.config.accountkey})
-        if hasattr(config, "contract_id") and self.config.contract_id:
+        if hasattr(self.config, "contract_id") and self.config.contract_id:
             final_params.update({"contractId": self.config.contract_id})
         final_params.update({"ua": self.user_agent})
         return final_params
@@ -357,7 +357,7 @@ class IdentityManagementAPI(object):
         List the users synchronized with the MFA tenant.
         """
         page = 1
-        page_size = 500
+        page_size = 2048  #: Maximum allowed by the API
         total_page = None
         total_users = 0
 
