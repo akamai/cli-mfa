@@ -10,11 +10,10 @@ from . import config
 from . import core
 
 
-log_file = None
-
-
 def prepare_logging(cli_config):
-    logging.basicConfig(filename=log_file, level=logging.INFO, format=config.LOG_FMT)
+    logging.basicConfig(filename=cli_config.logfile,
+                        level=logging.getLevelName(cli_config.loglevel),
+                        format=config.LOG_FMT)
 
     if cli_config.debug:
         HTTPConnection.debuglevel = 1

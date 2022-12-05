@@ -111,6 +111,9 @@ class MFAConfig():
         self.parser.add_argument("--accountkey", "--account-key", help="Account Switch Key",
                                  default=os.environ.get('AKAMAI_EDGERC_ACCOUNT_KEY'))
         self.parser.add_argument("--debug", '-d', action="store_true", default=False, help="Debug mode")
+        self.parser.add_argument("--logfile", dest="logfile", help="Path to log file")
+        self.parser.add_argument("--loglevel", dest="loglevel", choices=["DEBUG", "INFO", "WARNING", "ERROR", "FATAL"],
+                                 help="Log level")
         self.parser.add_argument("--user-agent-prefix", dest='ua_prefix', default='Akamai-CLI', help=argparse.SUPPRESS)
 
         try:
