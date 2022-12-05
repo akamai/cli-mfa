@@ -91,6 +91,8 @@ class MFAConfig():
         invite_parser.add_argument('-g', '--group', dest="group", help='Send invite to member of this group')
         listuser_parser = user_action_parser.add_parser("list", help="List users")
         listuser_parser.add_argument('--json', action="store_true", help='Format list of users as JSON')
+        listuser_parser.add_argument('--include-devices', dest="include_devices", default=False, action="store_true",
+                                     help='Include device details for listed users')
 
         # ad-hoc implementation to support MFA customers
         loaduserparser = subparsers.add_parser('importusers', help="Import users from a CSV file")

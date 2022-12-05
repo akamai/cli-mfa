@@ -221,6 +221,7 @@ class IdentityManagementAPI(object):
         """
         self.service_api_helper = None
         self.open_api_helper = None
+        self.config = cli_config
         if cli_config.mfa_api_signing_key and cli_config.mfa_api_integration_id:
             self.service_api_helper = MFAServiceAPIHelper(
                 cli_config,
@@ -351,7 +352,7 @@ class IdentityManagementAPI(object):
         response = self.service_api_helper.post("/api/v1/control/email/enroll_users", json=payload)
         logger.debug(response)
 
-    def list_users(self, json_fmt=False):
+    def list_users(self):
         """
         List the users synchronized with the MFA tenant.
         """
@@ -363,14 +364,17 @@ class IdentityManagementAPI(object):
         while total_page is None or page <= total_page:
             logger.info(f"Page {page} of {total_page if total_page else 'unknown'}")
             params = {'page': page, 'pageSize': page_size}
+            if self.config.include_devices:
+                params.update({"includeDevices": "true"})
             scan_users = self.open_api_helper.get('/amfa/v1/users', params)
             total_page = scan_users.get('totalPages', 1)
             page += 1
             for u in scan_users.get('users', []):
-                if json_fmt:
+                if self.config.json:
                     cli.print(json.dumps(u, indent=4))
                 else:
                     cli.print(f"{u.get('userId')},{u.get('username')},{u.get('userStatus')}")
                 total_users += 1
 
-        cli.print(f"# Total users exported: {total_users}")
+        if not self.config.json:
+            cli.print(f"# Total users exported: {total_users}")

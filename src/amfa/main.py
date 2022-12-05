@@ -55,3 +55,11 @@ def run():
         identity.import_users_from_csv(cli_config.file, cli_config.ignore_header, cli_config.fullname_format)
     else:
         raise ValueError(f"Unsupported command: {cli_config.command}")
+
+
+"""
+Handy handler to be able to run command as module:
+  > python3 -m amfa.main info
+"""
+if __name__ == "__main__":
+    run()
