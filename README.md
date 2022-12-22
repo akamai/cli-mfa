@@ -158,7 +158,12 @@ When ``--end`` is omitted, end takes now minutes 30 seconds.
 
 List of all the users:
 ```
-% akamai users list
+% akamai mfa users list
+```
+
+List of all the users with output formatted in JSON and with device details:
+```
+% akamai mfa users list --json --include-devices
 ```
 
 ## Streaming Akamai MFA events to a SIEM
