@@ -114,6 +114,28 @@ class TestEvents(CliMFATest):
         self.assertGreater(event_count, 0, "We expect at least one MFA auth event")
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
+    def test_events_tail(self):
+        "Fetch MFA authentication events for last 3 hours."
+        stdout = None
+        stderr = None
+        cmd = self.cli_run("event", "--start", self.after, "--tail")
+        # timeout should be > tail_poll_interval
+        try:
+            cmd.communicate(timeout=10)
+        except subprocess.TimeoutExpired as te:
+            stdout = te.stdout
+            stderr = te.stderr
+
+        if stderr:
+            print(f"STDERR> {stderr.decode()} <STDERR")
+        if stdout:
+            print(f"STDOUT> {stdout.decode()} <STDOUT")
+            events = stdout.decode(encoding)
+            event_count = len(events.splitlines())
+            self.assertGreater(event_count, 0, "We expect at least one MFA auth event")
+        else:
+            self.fail("No data available")
+
 
 class TestUserGroupManagement(CliMFATest):
 
@@ -183,7 +205,8 @@ class TestCliMFA(CliMFATest):
         """
         cmd = self.cli_run('version')
         stdout, stderr = cmd.communicate()
-        self.assertRegex(stdout.decode(encoding), r'[0-9]+\.[0-9]+\.[0-9]+(-[a-z]*)+\n',
+        regexp = r'[0-9]+\.[0-9]+\.[0-9]+(-[a-z]*)*\n'
+        self.assertRegex(stdout.decode(encoding), regexp,
                          'Version should be formatted as x.y.z or x.y.z-tag')
         self.assertEqual(cmd.returncode, 0, 'return code must be 0')
 
