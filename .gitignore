@@ -1,2 +1,4 @@
 __pycache__/
 test/report.html
+.vscode/
+venv/
