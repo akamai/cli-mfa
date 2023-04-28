@@ -198,7 +198,7 @@ class EventAPI(object):
                     break
 
             if self.config.tail:
-                wait = self.config.tail_pull_interval - (time.time() - loop_start)
+                wait = config.tail_pull_interval - (time.time() - loop_start)
                 logging.debug("Wait %s sec..." % wait)
                 time.sleep(wait)
                 scan_start = scan_end  # next iteration we stich, start is the previous end
